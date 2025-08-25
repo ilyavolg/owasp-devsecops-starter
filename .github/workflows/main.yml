@@ -1,0 +1,48 @@
+name: security-main
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  main-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Secrets (Gitleaks) — fail on secrets
+      - name: Gitleaks
+        run: |
+          docker run --rm -v "$PWD":/repo zricethezav/gitleaks:latest \
+            detect -s /repo --no-git --redact --exit-code 1
+
+      # SAST (Semgrep OWASP Top 10) — fail on findings
+      - name: Semgrep (strict)
+        run: |
+          docker run --rm -v "$PWD":/src returntocorp/semgrep:latest \
+            semgrep ci --config p/owasp-top-ten --error --timeout 300
+
+      # SCA (Trivy fs) — collect results (don’t fail yet)
+      - name: Trivy filesystem
+        run: |
+          docker run --rm -v "$PWD":/repo aquasec/trivy:latest \
+            fs --format sarif -o trivy-fs.sarif /repo || true
+
+      # Build demo image & scan (don’t fail yet)
+      - name: Build & Trivy image
+        run: |
+          docker build -t devsecops-demo:${{ github.sha }} .
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
+            image --format sarif -o trivy-img.sarif devsecops-demo:${{ github.sha }} || true
+
+      # IaC (Checkov) — collect results (don’t fail yet)
+      - name: Checkov IaC
+        run: |
+          docker run --rm -v "$PWD":/src bridgecrew/checkov:latest \
+            -d /src -o sarif > checkov.sarif || true
+
+      # Upload artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: main-security-artifacts
+          path: "*.sarif"
+          if-no-files-found: ignore
