@@ -1,0 +1,57 @@
+name: security-pr
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gitleaks
+        run: |
+          docker run --rm -v "$PWD":/repo zricethezav/gitleaks:latest \
+            detect -s /repo --no-git --redact --exit-code 1
+
+      - name: Semgrep
+        run: |
+          docker run --rm -v "$PWD":/src returntocorp/semgrep:latest \
+            semgrep ci --config p/owasp-top-ten --error --timeout 300
+
+      - name: Trivy filesystem & SBOM
+        run: |
+          docker run --rm -v "$PWD":/repo aquasec/trivy:latest fs --format sarif -o trivy-fs.sarif /repo || true
+          docker run --rm -v "$PWD":/repo aquasec/trivy:latest sbom --format cyclonedx -o sbom.cdx.json /repo || true
+
+      - name: Checkov IaC
+        run: |
+          docker run --rm -v "$PWD":/src bridgecrew/checkov:latest \
+            -d /src -o sarif > checkov.sarif || true
+
+      - name: Build demo image & Trivy image
+        run: |
+          docker build -t devsecops-demo:${{ github.sha }} .
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
+            image --format sarif -o trivy-img.sarif devsecops-demo:${{ github.sha }} || true
+
+      - name: ZAP Baseline (optional)
+        env:
+          DAST_TARGET_URL: ${{ secrets.DAST_TARGET_URL }}
+        run: |
+          if [ -n "$DAST_TARGET_URL" ]; then
+            docker run --rm -t owasp/zap2docker-stable \
+              zap-baseline.py -t "$DAST_TARGET_URL" -r zap-baseline.html -J zap-baseline.json -m 3 || true
+          else
+            echo "DAST_TARGET_URL not set; skipping ZAP baseline."
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr-security-artifacts
+          path: |
+            *.sarif
+            sbom.cdx.json
+            zap-baseline.html
+            zap-baseline.json
+          if-no-files-found: ignore
