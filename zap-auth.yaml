@@ -1,0 +1,32 @@
+env:
+  contexts:
+    - name: app
+      urls: [ ${ZAP_TARGET} ]
+      includePaths: [ ${ZAP_TARGET}/.* ]
+      authentication:
+        method: form
+        parameters:
+          loginUrl: ${ZAP_TARGET}/login
+          loginRequestBody: "username=${ZAP_USER}&password=${ZAP_PASS}"
+      users:
+        - name: test-user
+          credentials:
+            username: ${ZAP_USER}
+            password: ${ZAP_PASS}
+      sessionManagement:
+        method: cookie
+jobs:
+  - type: spider
+    parameters:
+      context: app
+      user: test-user
+      maxDuration: 5
+  - type: activeScan
+    parameters:
+      context: app
+      user: test-user
+      maxDuration: 12
+report:
+  template: traditional-html
+  reportDir: /zap/wrk
+  reportFile: zap-report.html
