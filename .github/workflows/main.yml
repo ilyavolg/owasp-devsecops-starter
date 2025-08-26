@@ -1,11 +1,54 @@
-- name: Gitleaks
-  continue-on-error: true
-  run: |
-    docker run --rm -v "$PWD":/repo zricethezav/gitleaks:latest \
-      detect -s /repo --no-git --redact --exit-code 1
+name: security-main
+on:
+  push:
+    branches: [ main ]
 
-- name: Semgrep (strict)
-  continue-on-error: true
-  run: |
-    docker run --rm -v "$PWD":/src returntocorp/semgrep:latest \
-      semgrep ci --config p/owasp-top-ten --error --timeout 300
+jobs:
+  main-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Debug list files
+        run: ls -la
+
+      - name: Gitleaks
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD":/repo zricethezav/gitleaks:latest \
+            detect -s /repo --no-git --redact --exit-code 1
+
+      - name: Semgrep (OWASP Top 10)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD":/src returntocorp/semgrep:latest \
+            semgrep ci --config p/owasp-top-ten --error --timeout 300
+
+      - name: Trivy filesystem (SARIF)
+        run: |
+          docker run --rm -v "$PWD":/repo aquasec/trivy:latest \
+            fs --format sarif -o trivy-fs.sarif /repo || true
+
+      - name: Build demo image
+        run: docker build -t devsecops-demo:${{ github.sha }} .
+
+      - name: Trivy image scan (SARIF)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
+            image --format sarif -o trivy-img.sarif devsecops-demo:${{ github.sha }} || true
+
+      - name: Checkov IaC (SARIF)
+        run: |
+          docker run --rm -v "$PWD":/src bridgecrew/checkov:latest \
+            -d /src -o sarif > checkov.sarif || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-security-artifacts
+          path: |
+            trivy-fs.sarif
+            trivy-img.sarif
+            checkov.sarif
+          if-no-files-found: ignore
