@@ -4,6 +4,14 @@
     <meta charset="utf-8">
     <title>OWASP DevSecOps Starter</title>
   </head>
+  <div id="output"></div>
+<script>
+// DEMO ONLY — intentionally insecure to trigger the scanners.
+const password = "SuperSecret123";        // Gitleaks should flag "password"
+const q = new URLSearchParams(location.search).get('q');
+document.getElementById('output').innerHTML = q; // DOM XSS (Semgrep OWASP)
+eval("console.log('eval used')");         // Use of eval (Semgrep)
+</script>
   <body>
     <h1>It works!</h1>
     <p>This is a tiny static page so the CI tools have something to scan.</p>
