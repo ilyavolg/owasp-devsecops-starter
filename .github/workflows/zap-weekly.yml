@@ -1,0 +1,26 @@
+name: zap-weekly
+on:
+  schedule:
+    - cron: "0 2 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  zap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ZAP active scan
+        env:
+          ZAP_TARGET: ${{ secrets.DAST_TARGET_URL }}
+        run: |
+          if [ -z "$ZAP_TARGET" ]; then
+            echo "DAST_TARGET_URL not set; skipping."; exit 0; fi
+          docker run --rm -t owasp/zap2docker-stable \
+            zap-full-scan.py -t "$ZAP_TARGET" -r zap-report.html -J zap-report.json -m 5 || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zap-weekly-report
+          path: |
+            zap-report.html
+            zap-report.json
+          if-no-files-found: warn
