@@ -14,16 +14,17 @@ jobs:
         run: ls -la
 
       - name: Gitleaks
-        continue-on-error: true
-        run: |
-          docker run --rm -v "$PWD":/repo zricethezav/gitleaks:latest \
-            detect -s /repo --no-git --redact --exit-code 1
+  continue-on-error: true
+  run: |
+    docker run --rm -v "$PWD":/repo zricethezav/gitleaks:latest \
+      detect -s /repo --no-git --redact \
+      --report-format sarif -r /repo/gitleaks.sarif || true
 
-      - name: Semgrep (OWASP Top 10)
-        continue-on-error: true
-        run: |
-          docker run --rm -v "$PWD":/src returntocorp/semgrep:latest \
-            semgrep ci --config p/owasp-top-ten --error --timeout 300
+- name: Semgrep (OWASP Top 10)
+  continue-on-error: true
+  run: |
+    docker run --rm -v "$PWD":/src returntocorp/semgrep:latest \
+      semgrep --config p/owasp-top-ten --sarif -o /src/semgrep.sarif || true
 
       - name: Trivy filesystem (SARIF)
         run: |
@@ -42,13 +43,20 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/src bridgecrew/checkov:latest \
             -d /src -o sarif > checkov.sarif || true
+            
+      - name: List reports
+  run: ls -lh *.sarif || true
+    
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: main-security-artifacts
-          path: |
-            trivy-fs.sarif
-            trivy-img.sarif
-            checkov.sarif
-          if-no-files-found: ignore
+  uses: actions/upload-artifact@v4
+  with:
+    name: main-security-artifacts
+    path: |
+      gitleaks.sarif
+      semgrep.sarif
+      trivy-fs.sarif
+      trivy-img.sarif
+      checkov.sarif
+    if-no-files-found: warn
+
