@@ -1,7 +1,7 @@
 name: security-main
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
 
 jobs:
   main-security:
@@ -13,50 +13,51 @@ jobs:
       - name: Debug list files
         run: ls -la
 
-      -- name: Gitleaks (SARIF)
-  run: |
-    docker run --rm -v "$PWD":/repo zricethezav/gitleaks:latest \
-      detect -s /repo --no-git --redact \
-      --report-format sarif -r /repo/gitleaks.sarif || true
+      - name: Gitleaks (SARIF)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD":/repo zricethezav/gitleaks:latest \
+            detect -s /repo --no-git --redact \
+            --report-format sarif -r /repo/gitleaks.sarif || true
 
-- name: Semgrep (OWASP Top 10) (SARIF)
-  run: |
-    docker run --rm -v "$PWD":/src returntocorp/semgrep:latest \
-      semgrep --config p/owasp-top-ten --sarif -o /src/semgrep.sarif || true
+      - name: Semgrep (OWASP Top 10) (SARIF)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD":/src returntocorp/semgrep:latest \
+            semgrep --config p/owasp-top-ten --sarif -o /src/semgrep.sarif || true
 
-- name: Trivy filesystem (SARIF)
-  run: |
-    docker run --rm -v "$PWD":/repo aquasec/trivy:latest \
-      fs --format sarif -o /repo/trivy-fs.sarif /repo || true
+      - name: Trivy filesystem (SARIF)
+        run: |
+          docker run --rm -v "$PWD":/repo aquasec/trivy:latest \
+            fs --format sarif -o /repo/trivy-fs.sarif /repo || true
 
-- name: Build demo image
-  run: docker build -t devsecops-demo:${{ github.sha }} .
+      - name: Build demo image
+        run: docker build -t devsecops-demo:${{ github.sha }} .
 
-- name: Trivy image scan (SARIF)
-  run: |
-    docker run --rm \
-      -v "$PWD":/repo \
-      -v /var/run/docker.sock:/var/run/docker.sock \
-      aquasec/trivy:latest image \
-      --format sarif -o /repo/trivy-img.sarif devsecops-demo:${{ github.sha }} || true
+      - name: Trivy image scan (SARIF)
+        run: |
+          docker run --rm \
+            -v "$PWD":/repo \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --format sarif -o /repo/trivy-img.sarif devsecops-demo:${{ github.sha }} || true
 
-- name: Checkov IaC (SARIF)
-  run: |
-    docker run --rm -v "$PWD":/src bridgecrew/checkov:latest \
-      -d /src -o sarif > checkov.sarif || true
+      - name: Checkov IaC (SARIF)
+        run: |
+          docker run --rm -v "$PWD":/src bridgecrew/checkov:latest \
+            -d /src -o sarif > checkov.sarif || true
 
-- name: List reports
-  run: ls -lh *.sarif || true
+      - name: List reports
+        run: ls -lh *.sarif || true
 
-- name: Upload artifacts
-  uses: actions/upload-artifact@v4
-  with:
-    name: main-security-artifacts
-    path: |
-      gitleaks.sarif
-      semgrep.sarif
-      trivy-fs.sarif
-      trivy-img.sarif
-      checkov.sarif
-    if-no-files-found: warn
-
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-security-artifacts
+          path: |
+            gitleaks.sarif
+            semgrep.sarif
+            trivy-fs.sarif
+            trivy-img.sarif
+            checkov.sarif
+          if-no-files-found: warn
